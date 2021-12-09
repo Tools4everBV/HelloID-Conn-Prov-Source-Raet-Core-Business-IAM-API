@@ -136,13 +136,25 @@ function Get-RaetPersonDataList {
         $persons = $personList
 
         $jobProfiles = Invoke-RaetWebRequestList -Url "$Script:BaseUrl/jobProfiles"
+        
         $jobProfiles = $jobProfiles | Select-Object * -ExcludeProperty extensions
+        $jobProfile = $jobProfiles | Where-Object { (Get-Date) -ge $_.validFrom}
         # Get the latest jobProfiles
-        $jobprofiles = $jobprofiles | Where-Object { $_.isActive -ne $false }
-        $propJob = @{Expression = { if (($_.validUntil -eq "") -or ($null -eq $_.validUntil) ) { (Get-Date -Year 2199 -Month 12 -Day 31) -as [datetime] } else { $_.validUntil -as [datetime] } }; Descending = $true } 
-        $jobprofiles = $jobprofiles | Sort-Object -Property id, $propJob   | Select-Object -First 1
-        #
-        $jobProfileGrouped = $jobProfiles | Group-Object Id -AsHashTable
+
+        $jobProfileGrouped = $jobProfiles | Group-Object -AsHashTable -Property Id -AsString
+        $uniqueJobProfiles = $jobProfiles | Sort-Object Id -Unique               
+
+        $propJob = @{Expression = {  $_.validFrom -as [datetime]  }; Descending = $true } 
+        
+        $jobProfileList = [System.Collections.Generic.List[Object]]@()
+        foreach ($job in  $uniqueJobProfiles) {
+            $j = $jobProfileGrouped[$job.Id] | Sort-Object -Property id, $propJob | Select-Object -First 1
+            $jobProfileList.Add($j)
+        }
+        $jobProfiles = $jobProfileList
+        
+        $jobProfileGrouped = $jobProfiles | Group-Object -AsHashTable -Property Id -AsString
+
 
         if ($true -eq $includeAssignments) {
             $assignments = Invoke-RaetWebRequestList -Url "$Script:BaseUrl/assignments"
@@ -230,10 +242,11 @@ function Get-RaetPersonDataList {
 
                     #Contract result object used in HelloID
                     $Contract = [PSCustomObject]@{
-                        ExternalId       = $person.personCode + '_' + $employment.employmentCode
+                        #ExternalId       = $person.personCode + '_' + $employment.employmentCode
+                        ExternalId       = $employment.contractId
                         EmploymentType   = @{
                             ShortName = $employment.employmentType
-                            FullName  = $null
+                            FullName  = $employment.employmentType
                         }
                         PersonCode       = $person.personCode
                         EmploymentCode   = $employment.employmentCode
@@ -241,6 +254,9 @@ function Get-RaetPersonDataList {
                         EndDate          = $employment.dischargeDate
                         DischargeDate    = $employment.dischargeDate
                         HireDate         = $employment.hireDate
+                        CostCenter       = @{
+                            ShortName = $employment.costcenter
+                        }
                         JobProfile       = @{
                             ShortName = $employment.jobProfile
                             FullName  = $($jobProfile.fullName)
