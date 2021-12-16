@@ -46,7 +46,8 @@ function New-RaetSession {
             'X-Raet-Tenant-Id' = $TenantId;
            
         }     
-    } catch {
+    }
+    catch {
         if ($_.Exception.Response.StatusCode -eq "Forbidden") {
             $errorMessage = "Something went wrong $($_.ScriptStackTrace). Error message: '$($_.Exception.Message)'"
         } elseif (![string]::IsNullOrEmpty($_.ErrorDetails.Message)) {
@@ -75,10 +76,6 @@ function Invoke-RaetWebRequestList {
         $Url
     )
     try {
-        $accessTokenValid = Confirm-AccessTokenIsValid
-        if ($accessTokenValid -ne $true) {
-            New-RaetSession -ClientId $clientId -ClientSecret $clientSecret
-        }
 
         [System.Collections.ArrayList]$ReturnValue = @()
         $counter = 0 
@@ -88,11 +85,16 @@ function Invoke-RaetWebRequestList {
             }    
             $counter++
             [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12;
+            $accessTokenValid = Confirm-AccessTokenIsValid
+            if ($accessTokenValid -ne $true) {
+                New-RaetSession -ClientId $clientId -ClientSecret $clientSecret
+            }
             $result = Invoke-WebRequest -Uri $Url$SkipTakeUrl -Method GET -ContentType "application/json" -Headers $Script:AuthenticationHeaders -UseBasicParsing
             $resultSubset = (ConvertFrom-Json  $result.Content)
             $ReturnValue.AddRange($resultSubset.value)
         }until([string]::IsNullOrEmpty($resultSubset.nextLink))
-    } catch {
+    }
+    catch {
         if ($_.Exception.Response.StatusCode -eq "Forbidden") {
             $errorMessage = "Something went wrong $($_.ScriptStackTrace). Error message: '$($_.Exception.Message)'"
         } elseif (![string]::IsNullOrEmpty($_.ErrorDetails.Message)) {
@@ -111,10 +113,9 @@ function Get-RaetOrganizationUnitsList {
 
     try {
         $organizationalUnits = Invoke-RaetWebRequestList -Url "$Script:BaseUrl/organizationUnits"
-        #$roleAssignments = Invoke-RaetWebRequestList -Url "$Script:BaseUrl/roleAssignments"
-        
+
         $managerActiveCompareDate = Get-Date
-        #
+
         $persons = Invoke-RaetWebRequestList -Url "$Script:BaseUrl/employees"
         $filterDate = (Get-Date).AddDays(-90).Date	
         $persons = $persons | Where-Object { $_.validUntil -as [datetime] -ge $filterDate }
@@ -131,17 +132,17 @@ function Get-RaetOrganizationUnitsList {
             $personList.add($p)
         }
         $persons = $personList
-
+        $persons = $persons | Group-Object id -AsHashTable
 
         Write-Verbose -Verbose "Department import starting";
         $departments = @();
         foreach ($item in $organizationalUnits) {
-            # $ouRoleAssignments = $roleAssignments | Select-Object * | Where-Object organizationUnit -eq $item.id
-           
-            $person = $persons | Select-Object * | Where-Object id -eq $item.manager
+
+            if ( $null -ne $item.manager ) {
+                $person = $persons[$item.manager]
+            }  
             $managerId = $null
             $ExternalIdOu = $item.id
-            #$managerId = $person.personCode
             if ( $null -ne $person.personCode ) {
                 $managerId = $person.personCode
             }   

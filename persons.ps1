@@ -47,7 +47,8 @@ function New-RaetSession {
             'X-Raet-Tenant-Id' = $TenantId;
            
         }     
-    } catch {
+    }
+    catch {
         if ($_.Exception.Response.StatusCode -eq "Forbidden") {
             $errorMessage = "Something went wrong $($_.ScriptStackTrace). Error message: '$($_.Exception.Message)'"
         } elseif (![string]::IsNullOrEmpty($_.ErrorDetails.Message)) {
@@ -92,8 +93,10 @@ function Invoke-RaetWebRequestList {
             $result = Invoke-WebRequest -Uri $Url$SkipTakeUrl -Method GET -ContentType "application/json" -Headers $Script:AuthenticationHeaders -UseBasicParsing
             $resultSubset = (ConvertFrom-Json  $result.Content)
             $ReturnValue.AddRange($resultSubset.value)
+            Start-Sleep -Seconds 0.6
         }until([string]::IsNullOrEmpty($resultSubset.nextLink))
-    } catch {
+    }
+    catch {
         if ($_.Exception.Response.StatusCode -eq "Forbidden") {
             $errorMessage = "Something went wrong $($_.ScriptStackTrace). Error message: '$($_.Exception.Message)'"
         } elseif (![string]::IsNullOrEmpty($_.ErrorDetails.Message)) {
@@ -118,10 +121,7 @@ function Get-RaetPersonDataList {
         $filterDate = (Get-Date).AddDays(-90).Date	
         $persons = $persons | Where-Object { $_.validUntil -as [datetime] -ge $filterDate }
         $persons = $persons | Where-Object { ($_.employments.dischargeDate -as [datetime] -ge $filterDate -or $_.employments.dischargeDate -eq "" -or $null -eq $_.employments.dischargeDate) } 
-        
-        #$persons = $persons | Sort-Object -Property personcode,$prop1, $prop2
-        
-        #24-3
+
         $personsGrouped = $persons | Group-Object -AsHashTable -Property personcode -AsString
         $uniqueIdentities = $persons | Sort-Object personCode -Unique               
 
@@ -199,7 +199,6 @@ function Get-RaetPersonDataList {
                 if ($true -eq $includeAssignments) {
                     # Create Contract object(s) based on assignments
                     $lookingFor = $person.personCode + "_" + $employment.employmentCode
-                    #$personAssignments = $assignmentsGrouped[$person.personCode + "_" + $employment.employmentCode]
 
                     $personAssignments = $assignmentHashtable.$lookingFor
                     foreach ($assignment in $personAssignments) {
@@ -242,7 +241,6 @@ function Get-RaetPersonDataList {
 
                     #Contract result object used in HelloID
                     $Contract = [PSCustomObject]@{
-                        #ExternalId       = $person.personCode + '_' + $employment.employmentCode
                         ExternalId       = $employment.contractId
                         EmploymentType   = @{
                             ShortName = $employment.employmentType
@@ -306,7 +304,7 @@ function Get-RaetPersonDataList {
 
                 #Extend the person model using the person field extensions
                 foreach ($extension in $person.extensions) {
-                    $person | Add-Member -Name $person.extensions.key -MemberType NoteProperty -Value $person.extensions.value -Force
+                    $person | Add-Member -Name $extension.key -MemberType NoteProperty -Value $extension.value -Force
                 }
             }
 
