@@ -93,7 +93,6 @@ function Invoke-RaetWebRequestList {
             $result = Invoke-WebRequest -Uri $Url$SkipTakeUrl -Method GET -ContentType "application/json" -Headers $Script:AuthenticationHeaders -UseBasicParsing
             $resultSubset = (ConvertFrom-Json  $result.Content)
             $ReturnValue.AddRange($resultSubset.value)
-            Start-Sleep -Seconds 0.6
         }until([string]::IsNullOrEmpty($resultSubset.nextLink))
     }
     catch {
@@ -117,11 +116,14 @@ function Get-RaetPersonDataList {
     
     try {
         $persons = Invoke-RaetWebRequestList -Url "$Script:BaseUrl/employees"
-        
+
+        $costCenters = Invoke-RaetWebRequestList -Url "$Script:BaseUrl/valueList/costCenter"  
+        $costCentersGrouped = $costCenters | Group-Object -AsHashTable -Property shortName -AsString      
+
         $filterDate = (Get-Date).AddDays(-90).Date	
         $persons = $persons | Where-Object { $_.validUntil -as [datetime] -ge $filterDate }
         $persons = $persons | Where-Object { ($_.employments.dischargeDate -as [datetime] -ge $filterDate -or $_.employments.dischargeDate -eq "" -or $null -eq $_.employments.dischargeDate) } 
-
+        
         $personsGrouped = $persons | Group-Object -AsHashTable -Property personcode -AsString
         $uniqueIdentities = $persons | Sort-Object personCode -Unique               
 
@@ -154,7 +156,7 @@ function Get-RaetPersonDataList {
         $jobProfiles = $jobProfileList
         
         $jobProfileGrouped = $jobProfiles | Group-Object -AsHashTable -Property Id -AsString
-
+        
 
         if ($true -eq $includeAssignments) {
             $assignments = Invoke-RaetWebRequestList -Url "$Script:BaseUrl/assignments"
@@ -184,6 +186,9 @@ function Get-RaetPersonDataList {
             #Validate the required person fields
 
             $person | Add-Member -Name "ExternalId" -MemberType NoteProperty -Value $person.personCode
+
+            $PersonCostCenter = $null
+            $PersonCostCenter_tmp = $null
 
             if ([String]::IsNullOrEmpty($person.knownAs) -and [String]::IsNullOrEmpty($person.lastNameAtBirth)) {
                 $displayName = $person.personCode
@@ -238,6 +243,13 @@ function Get-RaetPersonDataList {
                     } 
                 } else {
                     # Create Contract object(s) based on employments
+                    
+                    If($employment.CostCenter.count -gt 0){
+                    $PersonCostCenter_tmp = $costCentersGrouped[$employment.CostCenter]
+                    If($null -ne $PersonCostCenter_tmp){
+                        $PersonCostCenter = $PersonCostCenter_tmp.fullName
+                        }
+                    }
 
                     #Contract result object used in HelloID
                     $Contract = [PSCustomObject]@{
@@ -253,7 +265,8 @@ function Get-RaetPersonDataList {
                         DischargeDate    = $employment.dischargeDate
                         HireDate         = $employment.hireDate
                         CostCenter       = @{
-                            ShortName = $employment.costcenter
+                            ShortName = $employment.costCenter
+                            FullName  = $PersonCostCenter
                         }
                         JobProfile       = @{
                             ShortName = $employment.jobProfile
@@ -274,6 +287,7 @@ function Get-RaetPersonDataList {
                 }
 
                 $person | Add-Member -Name "Contracts" -MemberType NoteProperty -Value $contracts -Force
+                $person | Add-Member -MemberType NoteProperty -Name "MemberGuest" -Value $FunctionMemberGuest -Force
 
                 # Add emailAddresses to the person
                 foreach ($emailAddress in $person.emailAddresses) {
