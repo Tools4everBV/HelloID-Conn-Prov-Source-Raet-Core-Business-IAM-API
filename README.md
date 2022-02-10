@@ -54,6 +54,7 @@ Please see the following website about the Raet IAM API documentation. Also note
 - https://community.visma.com/t5/Knowledge-base-YouServe-API-s/tkb-p/nl_ys_YouServe_API_knowledge_base/label-name/IAM%20API
 - https://community.visma.com/t5/Knowledge-base-YouServe-API-s/IAM-API-Domain-model-and-concepts/ta-p/472255
 - https://youserve-domain-api.github.io/SwaggerUI/iamapi.html
+- https://developers.youserve.nl/
 
 ---
 
