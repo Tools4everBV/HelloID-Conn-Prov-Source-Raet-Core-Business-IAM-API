@@ -29,7 +29,7 @@ function New-RaetSession {
         return
     }
 
-    $url = "https://api.raet.com/authentication/token"
+    $url = "https://api.youserve.nl/authentication/token"
     $authorisationBody = @{
         'grant_type'    = "client_credentials"
         'client_id'     = $ClientId
@@ -112,7 +112,7 @@ function Get-RaetPersonDataList {
     [CmdletBinding()]
     param ()
     
-    $Script:BaseUrl = "https://api.raet.com/iam/v1.0"
+    $Script:BaseUrl = "https://api.youserve.nl/iam/v1.0"
     
     try {
         $persons = Invoke-RaetWebRequestList -Url "$Script:BaseUrl/employees"
