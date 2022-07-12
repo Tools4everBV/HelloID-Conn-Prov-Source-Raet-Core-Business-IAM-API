@@ -1,8 +1,17 @@
-$config = $configuration | ConvertFrom-Json 
+# Set TLS to accept TLS, TLS 1.1 and TLS 1.2
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
 
-$clientId = $config.connection.clientId
-$clientSecret = $config.connection.clientSecret
-$tenantId = $config.connection.tenantId
+$VerbosePreference = "SilentlyContinue"
+$InformationPreference = "Continue"
+$WarningPreference = "Continue"
+
+$c = $configuration | ConvertFrom-Json
+
+$clientId = $c.clientId
+$clientSecret = $c.clientSecret
+$tenantId = $c.tenantId
+
+$Script:BaseUrl = "https://api.youserve.nl"
 
 function New-RaetSession { 
     [CmdletBinding()]
@@ -28,33 +37,35 @@ function New-RaetSession {
         return
     }
 
-    $url = "https://api.youserve.nl/authentication/token"
+    $url = "$Script:BaseUrl/authentication/token"
     $authorisationBody = @{
         'grant_type'    = "client_credentials"
         'client_id'     = $ClientId
         'client_secret' = $ClientSecret
-    } 
+    }
     try {
-        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12;
-        $result = Invoke-WebRequest -Uri $url -Method Post -Body $authorisationBody -ContentType 'application/x-www-form-urlencoded' -Headers @{'Cache-Control' = "no-cache" } -Proxy:$Proxy -UseBasicParsing
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+
+        $result = Invoke-WebRequest -Uri $url -Method Post -Body $authorisationBody -ContentType 'application/x-www-form-urlencoded' -Headers @{'Cache-Control' = "no-cache" } -UseBasicParsing
         $accessToken = $result.Content | ConvertFrom-Json
         $Script:expirationTimeAccessToken = (Get-Date).AddSeconds($accessToken.expires_in)
 
         $Script:AuthenticationHeaders = @{
-            'X-Client-Id'      = $ClientId;
-            'Authorization'    = "Bearer $($accessToken.access_token)";
-            'X-Raet-Tenant-Id' = $TenantId;
-           
-        }     
+            'X-Client-Id'      = $ClientId
+            'Authorization'    = "Bearer $($accessToken.access_token)"
+            'X-Raet-Tenant-Id' = $TenantId
+        }
     }
     catch {
         if ($_.Exception.Response.StatusCode -eq "Forbidden") {
             $errorMessage = "Something went wrong $($_.ScriptStackTrace). Error message: '$($_.Exception.Message)'"
-        } elseif (![string]::IsNullOrEmpty($_.ErrorDetails.Message)) {
-            $errorMessage = "Something went wrong $($_.ScriptStackTrace). Error message: '$($_.ErrorDetails.Message)'" 
-        } else {
-            $errorMessage = "Something went wrong $($_.ScriptStackTrace). Error message: '$($_)'" 
-        }  
+        }
+        elseif (![string]::IsNullOrEmpty($_.ErrorDetails.Message)) {
+            $errorMessage = "Something went wrong $($_.ScriptStackTrace). Error message: '$($_.ErrorDetails.Message)'"
+        }
+        else {
+            $errorMessage = "Something went wrong $($_.ScriptStackTrace). Error message: '$($_)'"
+        }
         throw $errorMessage
     } 
 }
@@ -68,100 +79,121 @@ function Confirm-AccessTokenIsValid {
     return $false    
 }
 
-function Invoke-RaetWebRequestList {
+function Invoke-RaetRestMethodList {
     [CmdletBinding()]
     param (
-        [parameter(Mandatory = $true)]  
+        [parameter(Mandatory = $true)]
         [string]
         $Url
     )
     try {
-
         [System.Collections.ArrayList]$ReturnValue = @()
-        $counter = 0 
+        $counter = 0
         do {
             if ($counter -gt 0) {
                 $SkipTakeUrl = $resultSubset.nextLink.Substring($resultSubset.nextLink.IndexOf("?"))
-            }    
+            }
             $counter++
-            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12;
+            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
             $accessTokenValid = Confirm-AccessTokenIsValid
             if ($accessTokenValid -ne $true) {
-                New-RaetSession -ClientId $clientId -ClientSecret $clientSecret
+                New-RaetSession -ClientId $clientId -ClientSecret $clientSecret -TenantId $tenantId
             }
-            $result = Invoke-WebRequest -Uri $Url$SkipTakeUrl -Method GET -ContentType "application/json" -Headers $Script:AuthenticationHeaders -UseBasicParsing
-            $resultSubset = (ConvertFrom-Json  $result.Content)
+            $result = Invoke-RestMethod -Uri $Url$SkipTakeUrl -Method GET -ContentType "application/json" -Headers $Script:AuthenticationHeaders -UseBasicParsing
+            $resultSubset = $result
             $ReturnValue.AddRange($resultSubset.value)
-        }until([string]::IsNullOrEmpty($resultSubset.nextLink))
+        } until([string]::IsNullOrEmpty($resultSubset.nextLink))
     }
     catch {
         if ($_.Exception.Response.StatusCode -eq "Forbidden") {
             $errorMessage = "Something went wrong $($_.ScriptStackTrace). Error message: '$($_.Exception.Message)'"
-        } elseif (![string]::IsNullOrEmpty($_.ErrorDetails.Message)) {
-            $errorMessage = "Something went wrong $($_.ScriptStackTrace). Error message: '$($_.ErrorDetails.Message)'" 
-        } else {
-            $errorMessage = "Something went wrong $($_.ScriptStackTrace). Error message: '$($_)'" 
-        }  
+        }
+        elseif (![string]::IsNullOrEmpty($_.ErrorDetails.Message)) {
+            $errorMessage = "Something went wrong $($_.ScriptStackTrace). Error message: '$($_.ErrorDetails.Message)'"
+        }
+        else {
+            $errorMessage = "Something went wrong $($_.ScriptStackTrace). Error message: '$($_)'"
+        }
         throw $errorMessage
     }
     return $ReturnValue
 }
 
-function Get-RaetOrganizationUnitsList { 
-   
-    $Script:BaseUrl = "https://api.youserve.nl/iam/v1.0"
 
-    try {
-        $organizationalUnits = Invoke-RaetWebRequestList -Url "$Script:BaseUrl/organizationUnits"
+Write-Information "Starting Department import"
 
-        $managerActiveCompareDate = Get-Date
+# Query organizationunits
+try {
+    Write-Verbose "Querying organizationUnits"
+    
+    $organizationUnits = Invoke-RaetRestMethodList -Url "$Script:BaseUrl/iam/v1.0/organizationunits"
 
-        $persons = Invoke-RaetWebRequestList -Url "$Script:BaseUrl/employees"
-        $filterDate = (Get-Date).AddDays(-90).Date	
-        $persons = $persons | Where-Object { $_.validUntil -as [datetime] -ge $filterDate }
-        $persons = $persons | Where-Object { ($_.employments.dischargeDate -as [datetime] -ge $filterDate -or $_.employments.dischargeDate -eq "" -or $null -eq $_.employments.dischargeDate) } 
-        $personsGrouped = $persons | Group-Object -AsHashTable -Property personcode -AsString
-        $uniqueIdentities = $persons | Sort-Object personCode -Unique               
+    # Filter for valid organizationunits
+    $filterDateValidOrganizationUnits = Get-Date
+    $organizationUnits = $organizationUnits | Where-Object { $_.validUntil -as [datetime] -ge $filterDateValidOrganizationUnits -and $_.validFrom -as [datetime] -le $filterDateValidOrganizationUnits }
 
-        $prop1 = @{Expression = { if (($_.validUntil -eq "") -or ($null -eq $_.validUntil) ) { (Get-Date -Year 2199 -Month 12 -Day 31) -as [datetime] } else { $_.validUntil -as [datetime] } }; Descending = $false } 
-        $prop2 = @{Expression = { if (($_.validFrom -eq "") -or ($null -eq $_.validFrom) ) { (Get-Date -Year 2199 -Month 12 -Day 31) -as [datetime] } else { $_.validFrom -as [datetime] } }; Descending = $false } 
-        
-        $personList = [System.Collections.Generic.List[Object]]@()
-        foreach ($id in  $uniqueIdentities) {
-            $p = $personsGrouped[$id.personCode] | Sort-Object -Property personcode, $prop1, $prop2 | Select-Object -Last 1
-            $personList.add($p)
-        }
-        $persons = $personList
-        $persons = $persons | Group-Object id -AsHashTable
-
-        Write-Verbose -Verbose "Department import starting";
-        $departments = @();
-        foreach ($item in $organizationalUnits) {
-
-            if ( $null -ne $item.manager ) {
-                $person = $persons[$item.manager]
-            }  
-            $managerId = $null
-            $ExternalIdOu = $item.id
-            if ( $null -ne $person.personCode ) {
-                $managerId = $person.personCode
-            }   
-
-            $organizationUnit = [PSCustomObject]@{
-                ExternalId        = $ExternalIdOu
-                ShortName         = $item.shortName
-                DisplayName       = $item.fullName
-                ManagerExternalId = $managerId
-                ParentExternalId  = $item.parentOrgUnit
-            }
-            $departments += $organizationUnit;
-        }
-        Write-Verbose -Verbose "Department import completed";
-        Write-Output $departments | ConvertTo-Json -Depth 10;
-    } catch {
-        throw "Could not Get-OrganizationUnitsList, message: $($_.Exception.Message)"   
-    }
+    Write-Information "Successfully queried organizationunits. Result: $($organizationUnits.Count)"
+}
+catch {
+    throw "Could not retrieve organizationunits. Error: $($_.Exception.Message)"
 }
 
-#call the Get-RaetOrganizationUnitsList function to get the data from the API
-Get-RaetOrganizationUnitsList
+# Query persons
+try {
+    Write-Verbose "Querying persons"
+
+    $persons = Invoke-RaetRestMethodList -Url "$Script:BaseUrl/iam/v1.0/persons"
+    
+    # Filter for valid persons
+    $filterDateValidPersons = Get-Date
+    $persons = $persons | Where-Object { $_.validUntil -as [datetime] -ge $filterDateValidPersons.AddDays(-90) -and $_.validFrom -as [datetime] -le $filterDateValidPersons.AddDays(90) }
+
+    # Check if there still are duplicate persons
+    $duplicatePersons = ($persons | Group-Object -Property personCode | Where-Object { $_.Count -gt 1 }).Name
+    if ($duplicatePersons.Count -ge 1) {
+        # Sort by validUntil and validFrom (Descending)
+        $prop1 = @{Expression = { if (($_.validUntil -eq "") -or ($null -eq $_.validUntil) ) { (Get-Date -Year 2199 -Month 12 -Day 31) -as [datetime] } else { $_.validUntil -as [datetime] } }; Descending = $true }
+        $prop2 = @{Expression = { if (($_.validFrom -eq "") -or ($null -eq $_.validFrom) ) { (Get-Date -Year 2199 -Month 12 -Day 31) -as [datetime] } else { $_.validFrom -as [datetime] } }; Descending = $false }
+
+        $persons = $persons | Sort-Object -Property personCode, $prop1, $prop2 | Sort-Object -Property personCode -Unique
+    }
+
+    # Group by id
+    $personsGrouped = $persons | Group-Object id -AsHashTable -AsString
+
+    Write-Information "Successfully queried persons. Result: $($persons.Count)"
+}
+catch {
+    throw "Could not retrieve persons. Error: $($_.Exception.Message)"
+}
+
+try {
+    $organizationUnits | ForEach-Object {
+        $managerId = $null
+        if ($null -ne $_.manager) {
+            $manager = $personsGrouped[$_.manager]
+            if ($null -ne $manager.personCode) {
+                $managerId = $manager.personCode
+            } 
+        }
+
+        $department = [PSCustomObject]@{
+            ExternalId        = $_.id
+            ShortName         = $_.shortName
+            DisplayName       = $_.fullName
+            ManagerExternalId = $managerId
+            ParentExternalId  = $_.parentOrgUnit
+        }
+
+        # Sanitize and export the json
+        $department = $department | ConvertTo-Json -Depth 10
+        $department = $department.Replace("._", "__")
+
+        Write-Output $department
+    }
+    Write-Information "Department import completed"
+}
+catch {
+    Write-Error "Error at line: $($_.InvocationInfo.PositionMessage)"
+    throw "Error: $_"
+}

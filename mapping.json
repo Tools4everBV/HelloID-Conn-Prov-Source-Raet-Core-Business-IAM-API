@@ -2,24 +2,32 @@
     "personMappings": [
         {
             "name": "Contact.Business.Email",
-            "mode": "field",
-            "value": "BusinessEmailAddress",
+            "mode": "complex",
+            "value": "function getValue(){\r\n    returnValue = '';\r\n\r\n    if (typeof source.BusinessEmailAddress !== 'undefined' && source.BusinessEmailAddress) {\r\n        returnValue = source.BusinessEmailAddress.address;\r\n    };\r\n\r\n    return returnValue;\r\n}\r\n\r\ngetValue();",
             "validation": {
                 "required": false
             }
         },
         {
             "name": "Contact.Business.Phone.Fixed",
-            "mode": "field",
-            "value": "BusinessPhoneNumber",
+            "mode": "complex",
+            "value": "function getValue(){\r\n    returnValue = '';\r\n\r\n    if (typeof source.BusinessPhoneNumber !== 'undefined' && source.BusinessPhoneNumber) {\r\n        returnValue = source.BusinessPhoneNumber.number;\r\n    };\r\n\r\n    return returnValue;\r\n}\r\n\r\ngetValue();",
             "validation": {
                 "required": false
             }
         },
         {
             "name": "Contact.Business.Phone.Mobile",
-            "mode": "field",
-            "value": "MobilePhoneNumber",
+            "mode": "complex",
+            "value": "function getValue(){\r\n    returnValue = '';\r\n\r\n    if (typeof source.MobilePhoneNumber !== 'undefined' && source.MobilePhoneNumber) {\r\n        returnValue = source.MobilePhoneNumber.number;\r\n    };\r\n\r\n    return returnValue;\r\n}\r\n\r\ngetValue();",
+            "validation": {
+                "required": false
+            }
+        },
+        {
+            "name": "Contact.Personal.Email",
+            "mode": "complex",
+            "value": "function getValue(){\r\n    returnValue = '';\r\n\r\n    if (typeof source.PrivateEmailAddress !== 'undefined' && source.PrivateEmailAddress) {\r\n        returnValue = source.PrivateEmailAddress.address;\r\n    };\r\n\r\n    return returnValue;\r\n}\r\n\r\ngetValue();",
             "validation": {
                 "required": false
             }
@@ -42,8 +50,8 @@
         },
         {
             "name": "Name.Convention",
-            "mode": "field",
-            "value": "nameAssembleOrder",
+            "mode": "complex",
+            "value": "switch (source.nameAssembleOrder) {\r\n    case \"0\": {\r\n        \"PB\"\r\n        break;\r\n    }\r\n    case \"1\": {\r\n        \"B\"\r\n        break;\r\n    }\r\n    case \"2\": {\r\n        \"P\"\r\n        break;\r\n    }\r\n    case \"3\": {\r\n        \"BP\"\r\n        break;\r\n    }\r\n    case \"4\": {\r\n        \"B\"\r\n        break;\r\n    }\r\n    default: {\r\n        \"B\"\r\n    }\r\n}",
             "validation": {
                 "required": true
             }
@@ -107,49 +115,25 @@
     ],
     "contractMappings": [
         {
-            "name": "CostBearer.Code",
-            "mode": "fixed",
-            "value": "NA",
-            "validation": {
-                "required": false
-            }
-        },
-        {
-            "name": "CostBearer.ExternalId",
-            "mode": "fixed",
-            "value": "NA",
-            "validation": {
-                "required": false
-            }
-        },
-        {
-            "name": "CostBearer.Name",
-            "mode": "fixed",
-            "value": "Not available",
-            "validation": {
-                "required": false
-            }
-        },
-        {
             "name": "CostCenter.Code",
-            "mode": "fixed",
-            "value": "NA",
+            "mode": "field",
+            "value": "employment_costCenter.shortName",
             "validation": {
                 "required": false
             }
         },
         {
             "name": "CostCenter.ExternalId",
-            "mode": "fixed",
-            "value": "NA",
+            "mode": "field",
+            "value": "employment_costCenter.shortName",
             "validation": {
                 "required": false
             }
         },
         {
             "name": "CostCenter.Name",
-            "mode": "fixed",
-            "value": "Not available",
+            "mode": "field",
+            "value": "employment_costCenter.fullName",
             "validation": {
                 "required": false
             }
@@ -157,7 +141,7 @@
         {
             "name": "Department.DisplayName",
             "mode": "field",
-            "value": "OrganizationUnit.FullName",
+            "value": "employment_organizationUnit.fullName",
             "validation": {
                 "required": false
             }
@@ -165,7 +149,7 @@
         {
             "name": "Department.ExternalId",
             "mode": "field",
-            "value": "OrganizationUnit.ShortName",
+            "value": "employment_organizationUnit.id",
             "validation": {
                 "required": false
             }
@@ -173,7 +157,7 @@
         {
             "name": "Details.HoursPerWeek",
             "mode": "field",
-            "value": "WorkingAmount.AmountOfWork",
+            "value": "employment_workingAmount.amountOfWork",
             "validation": {
                 "required": false
             }
@@ -181,31 +165,47 @@
         {
             "name": "Details.Sequence",
             "mode": "field",
-            "value": "EmploymentCode",
+            "value": "employment_contractCode",
+            "validation": {
+                "required": false
+            }
+        },
+        {
+            "name": "Division.Code",
+            "mode": "field",
+            "value": "employment_classification.shortName",
+            "validation": {
+                "required": false
+            }
+        },
+        {
+            "name": "Division.Name",
+            "mode": "field",
+            "value": "employment_classification.fullName",
             "validation": {
                 "required": false
             }
         },
         {
             "name": "Employer.Code",
-            "mode": "fixed",
-            "value": "NA",
+            "mode": "field",
+            "value": "employment_company.shortName",
             "validation": {
                 "required": false
             }
         },
         {
             "name": "Employer.ExternalId",
-            "mode": "fixed",
-            "value": "NA",
+            "mode": "field",
+            "value": "employment_company.id",
             "validation": {
                 "required": false
             }
         },
         {
             "name": "Employer.Name",
-            "mode": "fixed",
-            "value": "Not available",
+            "mode": "field",
+            "value": "employment_company.fullName",
             "validation": {
                 "required": false
             }
@@ -213,7 +213,7 @@
         {
             "name": "EndDate",
             "mode": "field",
-            "value": "EndDate",
+            "value": "employment_dischargeDate",
             "validation": {
                 "required": false
             }
@@ -221,7 +221,7 @@
         {
             "name": "ExternalId",
             "mode": "field",
-            "value": "ExternalId",
+            "value": "employment_ExternalId",
             "validation": {
                 "required": false
             }
@@ -229,7 +229,7 @@
         {
             "name": "StartDate",
             "mode": "field",
-            "value": "StartDate",
+            "value": "employment_hireDate",
             "validation": {
                 "required": false
             }
@@ -237,7 +237,7 @@
         {
             "name": "Title.Code",
             "mode": "field",
-            "value": "JobProfile.ShortName",
+            "value": "employment_jobProfile.shortName",
             "validation": {
                 "required": false
             }
@@ -245,7 +245,7 @@
         {
             "name": "Title.ExternalId",
             "mode": "field",
-            "value": "JobProfile.ShortName",
+            "value": "employment_jobProfile.id",
             "validation": {
                 "required": false
             }
@@ -253,7 +253,7 @@
         {
             "name": "Title.Name",
             "mode": "field",
-            "value": "JobProfile.FullName",
+            "value": "employment_jobProfile.fullName",
             "validation": {
                 "required": false
             }
