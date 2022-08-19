@@ -331,14 +331,13 @@ try {
             # Remove addresses, since the data is transformed into seperate properties
             $_.PSObject.Properties.Remove('addresses')
         }
-
+        
         # Transform extensions and add to the person
         if ($null -ne $_.extensions) {
             foreach ($extension in $_.extensions) {
                 # Add a property for each extension
                 $_ | Add-Member -Name $extension.key -MemberType NoteProperty -Value $extension.value -Force
             }
-
             # Remove unneccesary fields from  object (to avoid unneccesary large objects)
             # Remove extensions, since the data is transformed into seperate properties
             $_.PSObject.Properties.Remove('extensions')
@@ -357,34 +356,42 @@ try {
 
                 # Enhance employment with company for for extra information, such as: fullName
                 # Get company for employment, linking key is company ShortName
-                $company = $companiesGrouped[($employment.company)]
-                if ($null -ne $company) {
-                    # In the case multiple companies are found with the same ID, we always select the first one in the array
-                    $employment | Add-Member -MemberType NoteProperty -Name "company" -Value $company[0] -Force
+                if ($employment.company.count -gt 0) {
+                    $company = $companiesGrouped[($employment.company)]
+                    if ($null -ne $company) {
+                        # In the case multiple companies are found with the same ID, we always select the first one in the array
+                        $employment | Add-Member -MemberType NoteProperty -Name "company" -Value $company[0] -Force
+                    }
                 }
 
                 # Enhance employment with organizationUnit for for extra information, such as: fullName
                 # Get organizationUnit for employment, linking key is organizationUnit id
-                $organizationUnit = $organizationUnitsGrouped[($employment.organizationUnit)]
-                if ($null -ne $organizationUnit) {
-                    # In the case multiple organizationUnits are found with the same ID, we always select the first one in the array
-                    $employment | Add-Member -MemberType NoteProperty -Name "organizationUnit" -Value $organizationUnit[0] -Force
+                if ($employment.organizationUnit.count -gt 0) {
+                    $organizationUnit = $organizationUnitsGrouped[($employment.organizationUnit)]
+                    if ($null -ne $organizationUnit) {
+                        # In the case multiple organizationUnits are found with the same ID, we always select the first one in the array
+                        $employment | Add-Member -MemberType NoteProperty -Name "organizationUnit" -Value $organizationUnit[0] -Force
+                    }
                 }
                 
                 # Enhance employment with costCenter for for extra information, such as: fullName
                 # Get costCenter for employment, linking key is costCenter ShortName
-                $costCenter = $costCentersGrouped[($employment.costCenter)]
-                if ($null -ne $costCenter) {
-                    # In the case multiple costCenters are found with the same ID, we always select the first one in the array
-                    $employment | Add-Member -MemberType NoteProperty -Name "costCenter" -Value $costCenter[0] -Force
+                if ($employment.costCenter.count -gt 0) {
+                    $costCenter = $costCentersGrouped[($employment.costCenter)]
+                    if ($null -ne $costCenter) {
+                        # In the case multiple costCenters are found with the same ID, we always select the first one in the array
+                        $employment | Add-Member -MemberType NoteProperty -Name "costCenter" -Value $costCenter[0] -Force
+                    }
                 }
 
                 # Enhance employment with jobProfile for for extra information, such as: fullName
                 # Get jobProfile for employment, linking key is jobProfile id
-                $jobProfile = $jobProfilesGrouped["$($employment.jobProfile)"]
-                if ($null -ne $jobProfile) {
-                    # In the case multiple jobProfiles are found with the same ID, we always select the first one in the array
-                    $employment | Add-Member -MemberType NoteProperty -Name "jobProfile" -Value $jobProfile[0] -Force
+                if ($employment.jobProfile.count -gt 0) {
+                    $jobProfile = $jobProfilesGrouped["$($employment.jobProfile)"]
+                    if ($null -ne $jobProfile) {
+                        # In the case multiple jobProfiles are found with the same ID, we always select the first one in the array
+                        $employment | Add-Member -MemberType NoteProperty -Name "jobProfile" -Value $jobProfile[0] -Force
+                    }
                 }
 
                 # Enhance employment with classification for for extra information, such as: fullName
