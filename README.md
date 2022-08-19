@@ -11,6 +11,7 @@
 ## Versioning
 | Version | Description | Date |
 | - | - | - |
+| 1.1.1   | Changed to use employees (instead of persons) endpoint as the extension fields are only avaible on the employees endpoint | 2022/08/19  |
 | 1.1.0   | Added support for mutliple contracts | 2022/07/12  |
 | 1.0.0   | Initial release | 2021/04/23  |
 
@@ -42,7 +43,7 @@ This connector retrieves HR data from the RAET IAM API. Please be aware that the
 
 ## Endpoints implemented
 
-- /persons (persons)
+- /employees (employees)
 - /companies (companies)
 - /organizationUnits (departments)
 - /valueList/costCenter (costcenters)

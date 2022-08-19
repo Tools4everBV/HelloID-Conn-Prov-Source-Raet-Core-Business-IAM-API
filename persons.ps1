@@ -58,16 +58,9 @@ function New-RaetSession {
         }
     }
     catch {
-        if ($_.Exception.Response.StatusCode -eq "Forbidden") {
-            $errorMessage = "Something went wrong $($_.ScriptStackTrace). Error message: '$($_.Exception.Message)'"
-        }
-        elseif (![string]::IsNullOrEmpty($_.ErrorDetails.Message)) {
-            $errorMessage = "Something went wrong $($_.ScriptStackTrace). Error message: '$($_.ErrorDetails.Message)'"
-        }
-        else {
-            $errorMessage = "Something went wrong $($_.ScriptStackTrace). Error message: '$($_)'"
-        }
-        throw $errorMessage
+        $ex = $PSItem
+        Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error message: $($ex)"
+        throw "Could not create RAET authorization headers. Error: $($ex.Exception.Message)"
     } 
 }
 
@@ -106,16 +99,10 @@ function Invoke-RaetRestMethodList {
         } until([string]::IsNullOrEmpty($resultSubset.nextLink))
     }
     catch {
-        if ($_.Exception.Response.StatusCode -eq "Forbidden") {
-            $errorMessage = "Something went wrong $($_.ScriptStackTrace). Error message: '$($_.Exception.Message)'"
-        }
-        elseif (![string]::IsNullOrEmpty($_.ErrorDetails.Message)) {
-            $errorMessage = "Something went wrong $($_.ScriptStackTrace). Error message: '$($_.ErrorDetails.Message)'"
-        }
-        else {
-            $errorMessage = "Something went wrong $($_.ScriptStackTrace). Error message: '$($_)'"
-        }
-        throw $errorMessage
+        $ex = $PSItem
+        Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error message: $($ex)"
+        throw "Could not invoke REST method. Error: $($ex.Exception.Message)"
+
     }
     return $ReturnValue
 }
@@ -127,26 +114,28 @@ Write-Information "Starting person import"
 try {
     Write-Verbose "Querying persons"
 
-    $persons = Invoke-RaetRestMethodList -Url "$Script:BaseUrl/iam/v1.0/persons"
+    $persons = Invoke-RaetRestMethodList -Url "$Script:BaseUrl/iam/v1.0/employees"
     
     # Filter for valid persons
     $filterDateValidPersons = Get-Date
     $persons = $persons | Where-Object { $_.validUntil -as [datetime] -ge $filterDateValidPersons.AddDays(-90) -and $_.validFrom -as [datetime] -le $filterDateValidPersons.AddDays(90) }
 
     # Check if there still are duplicate persons
-    $duplicatePersons = ($persons | Group-Object -Property personCode | Where-Object { $_.Count -gt 1 }).Name
+    $duplicatePersons = ($persons | Group-Object -Property personCode -CaseSensitive | Where-Object { $_.Count -gt 1 }).Name
     if ($duplicatePersons.Count -ge 1) {
         # Sort by validUntil and validFrom (Descending)
         $prop1 = @{Expression = { if (($_.validUntil -eq "") -or ($null -eq $_.validUntil) ) { (Get-Date -Year 2199 -Month 12 -Day 31) -as [datetime] } else { $_.validUntil -as [datetime] } }; Descending = $true }
         $prop2 = @{Expression = { if (($_.validFrom -eq "") -or ($null -eq $_.validFrom) ) { (Get-Date -Year 2199 -Month 12 -Day 31) -as [datetime] } else { $_.validFrom -as [datetime] } }; Descending = $false }
 
-        $persons = $persons | Sort-Object -Property personCode, $prop1, $prop2 | Sort-Object -Property personCode -Unique
+        $persons = $persons | Sort-Object -Property personCode, $prop1, $prop2 -CaseSensitive | Sort-Object -Property personCode -CaseSensitive -Unique
     }
 
     Write-Information "Successfully queried persons. Result: $($persons.Count)"
 }
 catch {
-    throw "Could not retrieve persons. Error: $($_.Exception.Message)"
+    $ex = $PSItem
+    Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error message: $($ex)"
+    throw "Could not query persons. Error: $($ex.Exception.Message)"
 }
 
 # Query employments
@@ -170,12 +159,14 @@ try {
     }
 
     # Group by personCode
-    $employmentsGrouped = $employments | Group-Object personCode -AsHashTable -AsString
+    $employmentsGrouped = $employments | Group-Object personCode -CaseSensitive -AsHashTable -AsString
 
     Write-Information "Successfully queried employments. Result: $($employments.Count)"
 }
 catch {
-    throw "Could not retrieve employments. Error: $($_.Exception.Message)"
+    $ex = $PSItem
+    Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error message: $($ex)"
+    throw "Could not query employments. Error: $($ex.Exception.Message)"
 }
 
 # Query companies
@@ -194,7 +185,9 @@ try {
     Write-Information "Successfully queried companies. Result: $($companies.Count)"
 }
 catch {
-    throw "Could not retrieve companies. Error: $($_.Exception.Message)"
+    $ex = $PSItem
+    Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error message: $($ex)"
+    throw "Could not query companies. Error: $($ex.Exception.Message)"
 }
 
 # Query organizationunits
@@ -213,7 +206,9 @@ try {
     Write-Information "Successfully queried organizationunits. Result: $($organizationUnits.Count)"
 }
 catch {
-    throw "Could not retrieve organizationunits. Error: $($_.Exception.Message)"
+    $ex = $PSItem
+    Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error message: $($ex)"
+    throw "Could not query organizationunits. Error: $($ex.Exception.Message)"
 }
 
 # Query costCenters
@@ -232,7 +227,9 @@ try {
     Write-Information "Successfully queried costCenters. Result: $($costCenters.Count)"
 }
 catch {
-    throw "Could not retrieve costCenters. Error: $($_.Exception.Message)"
+    $ex = $PSItem
+    Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error message: $($ex)"
+    throw "Could not query costCenters. Error: $($ex.Exception.Message)"
 }
 
 # Query classifications
@@ -251,7 +248,9 @@ try {
     Write-Information "Successfully queried classifications. Result: $($classifications.Count)"
 }
 catch {
-    throw "Could not retrieve classifications. Error: $($_.Exception.Message)"
+    $ex = $PSItem
+    Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error message: $($ex)"
+    throw "Could not query classifications. Error: $($ex.Exception.Message)"
 }
 
 # Query jobProfiles
@@ -270,10 +269,17 @@ try {
     Write-Information "Successfully queried jobProfiles. Result: $($jobProfiles.Count)"
 }
 catch {
-    throw "Could not retrieve jobProfiles. Error: $($_.Exception.Message)"
+    $ex = $PSItem
+    Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error message: $($ex)"
+    throw "Could not query jobProfiles. Error: $($ex.Exception.Message)"
 }
 
 try {
+    Write-Verbose 'Enhancing and exporting person objects to HelloID'
+
+    # Set counter to keep track of actual exported person objects
+    $exportedPersons = 0
+
     # Enhance the persons model
     $persons | Add-Member -MemberType NoteProperty -Name "ExternalId" -Value $null -Force
     $persons | Add-Member -MemberType NoteProperty -Name "DisplayName" -Value $null -Force
@@ -427,11 +433,16 @@ try {
         $person = $person.Replace("._", "__")
 
         Write-Output $person
+
+        # Updated counter to keep track of actual exported person objects
+        $exportedPersons++
     }
 
+    Write-Information "Succesfully enhanced and exported person objects to HelloID. Result count: $($exportedPersons)"
     Write-Information "Person import completed"
 }
 catch {
-    Write-Error "Error at line: $($_.InvocationInfo.PositionMessage)"
-    throw "Error: $_"
+    $ex = $PSItem
+    Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error message: $($ex)"
+    throw "Could not enhance and export person objects to HelloID. Error: $($ex.Exception.Message)"
 }
