@@ -11,6 +11,7 @@
 ## Versioning
 | Version | Description | Date |
 | - | - | - |
+| 1.1.2   | Updated logging and handling for too many request errors | 2022/09/28  |
 | 1.1.1   | Changed to use employees (instead of persons) endpoint as the extension fields are only avaible on the employees endpoint | 2022/08/19  |
 | 1.1.0   | Added support for mutliple contracts | 2022/07/12  |
 | 1.0.0   | Initial release | 2021/04/23  |

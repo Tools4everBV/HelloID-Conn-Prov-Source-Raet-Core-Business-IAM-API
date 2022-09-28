@@ -1,11 +1,20 @@
-# Set TLS to accept TLS, TLS 1.1 and TLS 1.2
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
+#####################################################
+# HelloID-Conn-Prov-Source-RAET-IAM-API-Core-Business-Persons
+#
+# Version: 1.1.2
+#####################################################
+$c = $configuration | ConvertFrom-Json
 
-$VerbosePreference = "SilentlyContinue"
+# Set debug logging
+switch ($($c.isDebug)) {
+    $true { $VerbosePreference = 'Continue' }
+    $false { $VerbosePreference = 'SilentlyContinue' }
+}
 $InformationPreference = "Continue"
 $WarningPreference = "Continue"
 
-$c = $configuration | ConvertFrom-Json
+# Set TLS to accept TLS, TLS 1.1 and TLS 1.2
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
 
 $clientId = $c.clientId
 $clientSecret = $c.clientSecret
@@ -14,7 +23,34 @@ $excludePersonsWithoutContractsInHelloID = $c.excludePersonsWithoutContractsInHe
 
 $Script:BaseUrl = "https://api.youserve.nl"
 
-function New-RaetSession { 
+#region functions
+function Resolve-HTTPError {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory,
+            ValueFromPipeline
+        )]
+        [object]$ErrorObject
+    )
+    process {
+        $httpErrorObj = [PSCustomObject]@{
+            FullyQualifiedErrorId = $ErrorObject.FullyQualifiedErrorId
+            MyCommand             = $ErrorObject.InvocationInfo.MyCommand
+            RequestUri            = $ErrorObject.TargetObject.RequestUri
+            ScriptStackTrace      = $ErrorObject.ScriptStackTrace
+            ErrorMessage          = ''
+        }
+        if ($ErrorObject.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') {
+            $httpErrorObj.ErrorMessage = $ErrorObject.ErrorDetails.Message
+        }
+        elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
+            $httpErrorObj.ErrorMessage = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
+        }
+        Write-Output $httpErrorObj
+    }
+}
+
+function New-RaetSession {
     [CmdletBinding()]
     param (
         [Alias("Param1")] 
@@ -32,89 +68,175 @@ function New-RaetSession {
         [string]
         $TenantId
     )
-   
+
     #Check if the current token is still valid
-    if (Confirm-AccessTokenIsValid -eq $true) {       
+    $accessTokenValid = Confirm-AccessTokenIsValid
+    if ($true -eq $accessTokenValid) {
         return
     }
 
-    $url = "$Script:BaseUrl/authentication/token"
-    $authorisationBody = @{
-        'grant_type'    = "client_credentials"
-        'client_id'     = $ClientId
-        'client_secret' = $ClientSecret
-    }
     try {
-        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+        # Set TLS to accept TLS, TLS 1.1 and TLS 1.2
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
 
-        $result = Invoke-WebRequest -Uri $url -Method Post -Body $authorisationBody -ContentType 'application/x-www-form-urlencoded' -Headers @{'Cache-Control' = "no-cache" } -UseBasicParsing
-        $accessToken = $result.Content | ConvertFrom-Json
-        $Script:expirationTimeAccessToken = (Get-Date).AddSeconds($accessToken.expires_in)
+        $authorisationBody = @{
+            'grant_type'    = "client_credentials"
+            'client_id'     = $ClientId
+            'client_secret' = $ClientSecret
+        }        
+        $splatAccessTokenParams = @{
+            Uri             = "$($BaseUrl)/authentication/token"
+            Headers         = @{'Cache-Control' = "no-cache" }
+            Method          = 'POST'
+            ContentType     = "application/x-www-form-urlencoded"
+            Body            = $authorisationBody
+            UseBasicParsing = $true
+        }
+
+        Write-Verbose "Creating Access Token at uri '$($splatAccessTokenParams.Uri)'"
+
+        $result = Invoke-RestMethod @splatAccessTokenParams
+        if ($null -eq $result.access_token) {
+            throw $result
+        }
+
+        $Script:expirationTimeAccessToken = (Get-Date).AddSeconds($result.expires_in)
 
         $Script:AuthenticationHeaders = @{
             'X-Client-Id'      = $ClientId
-            'Authorization'    = "Bearer $($accessToken.access_token)"
+            'Authorization'    = "Bearer $($result.access_token)"
             'X-Raet-Tenant-Id' = $TenantId
         }
+
+        Write-Verbose "Successfully created Access Token at uri '$($splatAccessTokenParams.Uri)'"
     }
     catch {
         $ex = $PSItem
-        Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error message: $($ex)"
-        throw "Could not create RAET authorization headers. Error: $($ex.Exception.Message)"
-    } 
+        if ( $($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
+            $errorObject = Resolve-HTTPError -Error $ex
+    
+            $verboseErrorMessage = $errorObject.ErrorMessage
+    
+            $auditErrorMessage = $errorObject.ErrorMessage
+        }
+    
+        # If error message empty, fall back on $ex.Exception.Message
+        if ([String]::IsNullOrEmpty($verboseErrorMessage)) {
+            $verboseErrorMessage = $ex.Exception.Message
+        }
+        if ([String]::IsNullOrEmpty($auditErrorMessage)) {
+            $auditErrorMessage = $ex.Exception.Message
+        }
+
+        Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($verboseErrorMessage)"        
+
+        throw "Error creating Access Token at uri ''$($splatAccessTokenParams.Uri)'. Please check credentials. Error Message: $auditErrorMessage"
+    }
 }
 
 function Confirm-AccessTokenIsValid {
     if ($null -ne $Script:expirationTimeAccessToken) {
         if ((Get-Date) -le $Script:expirationTimeAccessToken) {
             return $true
-        }        
+        }
     }
-    return $false    
+    return $false
 }
 
-function Invoke-RaetRestMethodList {
+function Invoke-RaetWebRequestList {
     [CmdletBinding()]
     param (
         [parameter(Mandatory = $true)]
         [string]
         $Url
     )
-    try {
-        [System.Collections.ArrayList]$ReturnValue = @()
-        $counter = 0
-        do {
-            if ($counter -gt 0) {
-                $SkipTakeUrl = $resultSubset.nextLink.Substring($resultSubset.nextLink.IndexOf("?"))
-            }
-            $counter++
-            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+    
+    # Set TLS to accept TLS, TLS 1.1 and TLS 1.2
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls12
+
+    [System.Collections.ArrayList]$ReturnValue = @()
+    $counter = 0
+    $triesCounter = 0
+    do {
+        try {
             $accessTokenValid = Confirm-AccessTokenIsValid
-            if ($accessTokenValid -ne $true) {
+            if ($true -ne $accessTokenValid) {
                 New-RaetSession -ClientId $clientId -ClientSecret $clientSecret -TenantId $tenantId
             }
-            $result = Invoke-RestMethod -Uri $Url$SkipTakeUrl -Method GET -ContentType "application/json" -Headers $Script:AuthenticationHeaders -UseBasicParsing
-            $resultSubset = $result
-            $ReturnValue.AddRange($resultSubset.value)
-        } until([string]::IsNullOrEmpty($resultSubset.nextLink))
-    }
-    catch {
-        $ex = $PSItem
-        Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error message: $($ex)"
-        throw "Could not invoke REST method. Error: $($ex.Exception.Message)"
 
-    }
+            $retry = $false
+
+            if ($counter -gt 0 -and $null -ne $result.nextLink) {
+                $SkipTakeUrl = $result.nextLink.Substring($result.nextLink.IndexOf("?"))
+            }
+
+            $counter++
+
+            $splatGetDataParams = @{
+                Uri             = "$Url$SkipTakeUrl"
+                Headers         = $Script:AuthenticationHeaders
+                Method          = 'GET'
+                ContentType     = "application/json"
+                UseBasicParsing = $true
+            }
+    
+            Write-Verbose "Querying data from '$($splatGetDataParams.Uri)'"
+
+            $result = Invoke-RestMethod @splatGetDataParams
+            $ReturnValue.AddRange($result.value)
+
+            # Wait for 0,6 seconds  - RAET IAM API allows a maximum of 100 requests a minute (https://community.visma.com/t5/Kennisbank-Youforce-API/API-Status-amp-Policy/ta-p/428099#toc-hId-339419904:~:text=3-,Spike%20arrest%20policy%20(max%20number%20of%20API%20calls%20per%20minute),100%20calls%20per%20minute,-*For%20the%20base).
+            Start-Sleep -Milliseconds 600
+        }
+        catch {
+            $ex = $PSItem
+           
+            if ( $($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
+                $errorObject = Resolve-HTTPError -Error $ex
+        
+                $verboseErrorMessage = $errorObject.ErrorMessage
+        
+                $auditErrorMessage = $errorObject.ErrorMessage
+            }
+        
+            # If error message empty, fall back on $ex.Exception.Message
+            if ([String]::IsNullOrEmpty($verboseErrorMessage)) {
+                $verboseErrorMessage = $ex.Exception.Message
+            }
+            if ([String]::IsNullOrEmpty($auditErrorMessage)) {
+                $auditErrorMessage = $ex.Exception.Message
+            }
+    
+            Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($verboseErrorMessage)"        
+
+            $maxTries = 3
+            if ($auditErrorMessage -Like "*`"errorCode`": `"Too Many Requests`"*" -and $triesCounter -lt $maxTries) {
+                $triesCounter++
+                $retry = $true
+                $delay = 100
+                Write-Warning "Error querying data from '$($splatGetDataParams.Uri)'. Error Message: $auditErrorMessage. Trying again in '$delay' milliseconds for a maximum of '$maxTries' tries."
+                Start-Sleep -Milliseconds $delay
+            }
+            else {
+                $retry = $false
+                throw "Error querying data from '$($splatGetDataParams.Uri)'. Error Message: $auditErrorMessage"
+            }
+        }
+    }while (-NOT[string]::IsNullOrEmpty($result.nextLink) -or $retry -eq $true)
+
+    Write-Verbose "Successfully queried data from '$($Url)'. Result count: $($ReturnValue.Count)"
+
     return $ReturnValue
 }
+#endregion functions
 
-
-Write-Information "Starting person import"
+Write-Information "Starting person import. Base URL: $BaseUrl"
 
 # Query persons
 try {
     Write-Verbose "Querying persons"
 
-    $persons = Invoke-RaetRestMethodList -Url "$Script:BaseUrl/iam/v1.0/employees"
+    $persons = Invoke-RaetWebRequestList -Url "$Script:BaseUrl/iam/v1.0/employees"
     
     # Filter for valid persons
     $filterDateValidPersons = Get-Date
@@ -130,19 +252,39 @@ try {
         $persons = $persons | Sort-Object -Property personCode, $prop1, $prop2 -CaseSensitive | Sort-Object -Property personCode -CaseSensitive -Unique
     }
 
+    # Make sure persons are unique
+    $persons = $persons | Sort-Object id -Unique
+
     Write-Information "Successfully queried persons. Result: $($persons.Count)"
 }
 catch {
     $ex = $PSItem
-    Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error message: $($ex)"
-    throw "Could not query persons. Error: $($ex.Exception.Message)"
+    if ( $($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
+        $errorObject = Resolve-HTTPError -Error $ex
+
+        $verboseErrorMessage = $errorObject.ErrorMessage
+
+        $auditErrorMessage = $errorObject.ErrorMessage
+    }
+
+    # If error message empty, fall back on $ex.Exception.Message
+    if ([String]::IsNullOrEmpty($verboseErrorMessage)) {
+        $verboseErrorMessage = $ex.Exception.Message
+    }
+    if ([String]::IsNullOrEmpty($auditErrorMessage)) {
+        $auditErrorMessage = $ex.Exception.Message
+    }
+
+    Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($verboseErrorMessage)"        
+
+    throw "Error querying persons. Error Message: $auditErrorMessage"
 }
 
 # Query employments
 try {
     Write-Verbose "Querying employments"
 
-    $employments = Invoke-RaetRestMethodList -Url "$Script:BaseUrl/iam/v1.0/employments"
+    $employments = Invoke-RaetWebRequestList -Url "$Script:BaseUrl/iam/v1.0/employments"
 
     # Filter for valid employments
     $filterDateValidEmployments = Get-Date
@@ -165,15 +307,32 @@ try {
 }
 catch {
     $ex = $PSItem
-    Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error message: $($ex)"
-    throw "Could not query employments. Error: $($ex.Exception.Message)"
+    if ( $($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
+        $errorObject = Resolve-HTTPError -Error $ex
+
+        $verboseErrorMessage = $errorObject.ErrorMessage
+
+        $auditErrorMessage = $errorObject.ErrorMessage
+    }
+
+    # If error message empty, fall back on $ex.Exception.Message
+    if ([String]::IsNullOrEmpty($verboseErrorMessage)) {
+        $verboseErrorMessage = $ex.Exception.Message
+    }
+    if ([String]::IsNullOrEmpty($auditErrorMessage)) {
+        $auditErrorMessage = $ex.Exception.Message
+    }
+
+    Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($verboseErrorMessage)"        
+
+    throw "Error querying employments. Error Message: $auditErrorMessage"
 }
 
 # Query companies
 try {
     Write-Verbose "Querying companies"
     
-    $companies = Invoke-RaetRestMethodList -Url "$Script:BaseUrl/iam/v1.0/companies"
+    $companies = Invoke-RaetWebRequestList -Url "$Script:BaseUrl/iam/v1.0/companies"
 
     # Filter for valid companies
     $filterDateValidCompanies = Get-Date
@@ -186,15 +345,32 @@ try {
 }
 catch {
     $ex = $PSItem
-    Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error message: $($ex)"
-    throw "Could not query companies. Error: $($ex.Exception.Message)"
+    if ( $($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
+        $errorObject = Resolve-HTTPError -Error $ex
+
+        $verboseErrorMessage = $errorObject.ErrorMessage
+
+        $auditErrorMessage = $errorObject.ErrorMessage
+    }
+
+    # If error message empty, fall back on $ex.Exception.Message
+    if ([String]::IsNullOrEmpty($verboseErrorMessage)) {
+        $verboseErrorMessage = $ex.Exception.Message
+    }
+    if ([String]::IsNullOrEmpty($auditErrorMessage)) {
+        $auditErrorMessage = $ex.Exception.Message
+    }
+
+    Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($verboseErrorMessage)"        
+
+    throw "Error querying companies. Error Message: $auditErrorMessage"
 }
 
 # Query organizationunits
 try {
     Write-Verbose "Querying organizationUnits"
     
-    $organizationUnits = Invoke-RaetRestMethodList -Url "$Script:BaseUrl/iam/v1.0/organizationunits"
+    $organizationUnits = Invoke-RaetWebRequestList -Url "$Script:BaseUrl/iam/v1.0/organizationunits"
 
     # Filter for valid organizationunits
     $filterDateValidOrganizationUnits = Get-Date
@@ -207,15 +383,32 @@ try {
 }
 catch {
     $ex = $PSItem
-    Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error message: $($ex)"
-    throw "Could not query organizationunits. Error: $($ex.Exception.Message)"
+    if ( $($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
+        $errorObject = Resolve-HTTPError -Error $ex
+
+        $verboseErrorMessage = $errorObject.ErrorMessage
+
+        $auditErrorMessage = $errorObject.ErrorMessage
+    }
+
+    # If error message empty, fall back on $ex.Exception.Message
+    if ([String]::IsNullOrEmpty($verboseErrorMessage)) {
+        $verboseErrorMessage = $ex.Exception.Message
+    }
+    if ([String]::IsNullOrEmpty($auditErrorMessage)) {
+        $auditErrorMessage = $ex.Exception.Message
+    }
+
+    Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($verboseErrorMessage)"        
+
+    throw "Error querying organizationunits. Error Message: $auditErrorMessage"
 }
 
 # Query costCenters
 try {
     Write-Verbose "Querying costCenters"
     
-    $costCenters = Invoke-RaetRestMethodList -Url "$Script:BaseUrl/iam/v1.0/valueList/costCenter"
+    $costCenters = Invoke-RaetWebRequestList -Url "$Script:BaseUrl/iam/v1.0/valueList/costCenter"
 
     # Filter for valid costCenters
     $filterDateValidCostCenters = Get-Date
@@ -228,15 +421,32 @@ try {
 }
 catch {
     $ex = $PSItem
-    Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error message: $($ex)"
-    throw "Could not query costCenters. Error: $($ex.Exception.Message)"
+    if ( $($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
+        $errorObject = Resolve-HTTPError -Error $ex
+
+        $verboseErrorMessage = $errorObject.ErrorMessage
+
+        $auditErrorMessage = $errorObject.ErrorMessage
+    }
+
+    # If error message empty, fall back on $ex.Exception.Message
+    if ([String]::IsNullOrEmpty($verboseErrorMessage)) {
+        $verboseErrorMessage = $ex.Exception.Message
+    }
+    if ([String]::IsNullOrEmpty($auditErrorMessage)) {
+        $auditErrorMessage = $ex.Exception.Message
+    }
+
+    Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($verboseErrorMessage)"        
+
+    throw "Error querying costCenters. Error Message: $auditErrorMessage"
 }
 
 # Query classifications
 try {
     Write-Verbose "Querying classifications"
     
-    $classifications = Invoke-RaetRestMethodList -Url "$Script:BaseUrl/iam/v1.0/valueList/classification"
+    $classifications = Invoke-RaetWebRequestList -Url "$Script:BaseUrl/iam/v1.0/valueList/classification"
 
     # Filter for valid classifications
     $filterDateValidClassifications = Get-Date
@@ -249,15 +459,32 @@ try {
 }
 catch {
     $ex = $PSItem
-    Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error message: $($ex)"
-    throw "Could not query classifications. Error: $($ex.Exception.Message)"
+    if ( $($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
+        $errorObject = Resolve-HTTPError -Error $ex
+
+        $verboseErrorMessage = $errorObject.ErrorMessage
+
+        $auditErrorMessage = $errorObject.ErrorMessage
+    }
+
+    # If error message empty, fall back on $ex.Exception.Message
+    if ([String]::IsNullOrEmpty($verboseErrorMessage)) {
+        $verboseErrorMessage = $ex.Exception.Message
+    }
+    if ([String]::IsNullOrEmpty($auditErrorMessage)) {
+        $auditErrorMessage = $ex.Exception.Message
+    }
+
+    Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($verboseErrorMessage)"        
+
+    throw "Error querying classifications. Error Message: $auditErrorMessage"
 }
 
 # Query jobProfiles
 try {
     Write-Verbose "Querying jobProfiles"
     
-    $jobProfiles = Invoke-RaetRestMethodList -Url "$Script:BaseUrl/iam/v1.0/jobProfiles"
+    $jobProfiles = Invoke-RaetWebRequestList -Url "$Script:BaseUrl/iam/v1.0/jobProfiles"
 
     # Filter for valid classifications
     $filterDateValidJobProfiles = Get-Date
@@ -270,8 +497,25 @@ try {
 }
 catch {
     $ex = $PSItem
-    Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error message: $($ex)"
-    throw "Could not query jobProfiles. Error: $($ex.Exception.Message)"
+    if ( $($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
+        $errorObject = Resolve-HTTPError -Error $ex
+
+        $verboseErrorMessage = $errorObject.ErrorMessage
+
+        $auditErrorMessage = $errorObject.ErrorMessage
+    }
+
+    # If error message empty, fall back on $ex.Exception.Message
+    if ([String]::IsNullOrEmpty($verboseErrorMessage)) {
+        $verboseErrorMessage = $ex.Exception.Message
+    }
+    if ([String]::IsNullOrEmpty($auditErrorMessage)) {
+        $auditErrorMessage = $ex.Exception.Message
+    }
+
+    Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($verboseErrorMessage)"        
+
+    throw "Error querying jobProfiles. Error Message: $auditErrorMessage"
 }
 
 try {
@@ -338,6 +582,7 @@ try {
                 # Add a property for each extension
                 $_ | Add-Member -Name $extension.key -MemberType NoteProperty -Value $extension.value -Force
             }
+
             # Remove unneccesary fields from  object (to avoid unneccesary large objects)
             # Remove extensions, since the data is transformed into seperate properties
             $_.PSObject.Properties.Remove('extensions')
@@ -450,6 +695,23 @@ try {
 }
 catch {
     $ex = $PSItem
-    Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error message: $($ex)"
-    throw "Could not enhance and export person objects to HelloID. Error: $($ex.Exception.Message)"
+    if ( $($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
+        $errorObject = Resolve-HTTPError -Error $ex
+
+        $verboseErrorMessage = $errorObject.ErrorMessage
+
+        $auditErrorMessage = $errorObject.ErrorMessage
+    }
+
+    # If error message empty, fall back on $ex.Exception.Message
+    if ([String]::IsNullOrEmpty($verboseErrorMessage)) {
+        $verboseErrorMessage = $ex.Exception.Message
+    }
+    if ([String]::IsNullOrEmpty($auditErrorMessage)) {
+        $auditErrorMessage = $ex.Exception.Message
+    }
+
+    Write-Verbose "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($verboseErrorMessage)"        
+
+    throw "Could not enhance and export person objects to HelloID. Error Message: $auditErrorMessage"
 }
