@@ -3,7 +3,7 @@
         {
             "name": "Contact.Business.Email",
             "mode": "complex",
-            "value": "function getValue(){\r\n    returnValue = '';\r\n\r\n    if (typeof source.BusinessEmailAddress !== 'undefined' && source.BusinessEmailAddress) {\r\n        returnValue = source.BusinessEmailAddress.address;\r\n    };\r\n\r\n    return returnValue;\r\n}\r\n\r\ngetValue();",
+            "value": "function getValue(){\r\n    let returnValue = '';\r\n\r\n    if (typeof source.BusinessEmailAddress !== 'undefined' && source.BusinessEmailAddress) {\r\n        returnValue = source.BusinessEmailAddress.address;\r\n    };\r\n\r\n    return returnValue;\r\n}\r\n\r\ngetValue();",
             "validation": {
                 "required": false
             }
@@ -11,7 +11,7 @@
         {
             "name": "Contact.Business.Phone.Fixed",
             "mode": "complex",
-            "value": "function getValue(){\r\n    returnValue = '';\r\n\r\n    if (typeof source.BusinessPhoneNumber !== 'undefined' && source.BusinessPhoneNumber) {\r\n        returnValue = source.BusinessPhoneNumber.number;\r\n    };\r\n\r\n    return returnValue;\r\n}\r\n\r\ngetValue();",
+            "value": "function getValue(){\r\n    let returnValue = '';\r\n\r\n    if (typeof source.BusinessPhoneNumber !== 'undefined' && source.BusinessPhoneNumber) {\r\n        returnValue = source.BusinessPhoneNumber.number;\r\n    };\r\n\r\n    return returnValue;\r\n}\r\n\r\ngetValue();",
             "validation": {
                 "required": false
             }
@@ -19,7 +19,7 @@
         {
             "name": "Contact.Business.Phone.Mobile",
             "mode": "complex",
-            "value": "function getValue(){\r\n    returnValue = '';\r\n\r\n    if (typeof source.MobilePhoneNumber !== 'undefined' && source.MobilePhoneNumber) {\r\n        returnValue = source.MobilePhoneNumber.number;\r\n    };\r\n\r\n    return returnValue;\r\n}\r\n\r\ngetValue();",
+            "value": "function getValue(){\r\n    let returnValue = '';\r\n\r\n    if (typeof source.MobilePhoneNumber !== 'undefined' && source.MobilePhoneNumber) {\r\n        returnValue = source.MobilePhoneNumber.number;\r\n    };\r\n\r\n    return returnValue;\r\n}\r\n\r\ngetValue();",
             "validation": {
                 "required": false
             }
@@ -27,7 +27,7 @@
         {
             "name": "Contact.Personal.Email",
             "mode": "complex",
-            "value": "function getValue(){\r\n    returnValue = '';\r\n\r\n    if (typeof source.PrivateEmailAddress !== 'undefined' && source.PrivateEmailAddress) {\r\n        returnValue = source.PrivateEmailAddress.address;\r\n    };\r\n\r\n    return returnValue;\r\n}\r\n\r\ngetValue();",
+            "value": "function getValue(){\r\n    let returnValue = '';\r\n\r\n    if (typeof source.PrivateEmailAddress !== 'undefined' && source.PrivateEmailAddress) {\r\n        returnValue = source.PrivateEmailAddress.address;\r\n    };\r\n\r\n    return returnValue;\r\n}\r\n\r\ngetValue();",
             "validation": {
                 "required": false
             }
@@ -81,14 +81,6 @@
             }
         },
         {
-            "name": "Name.FamilyNamePrefix",
-            "mode": "field",
-            "value": "lastNameAtBirthPrefix",
-            "validation": {
-                "required": false
-            }
-        },
-        {
             "name": "Name.GivenName",
             "mode": "field",
             "value": "firstNames",
@@ -106,8 +98,8 @@
         },
         {
             "name": "Name.NickName",
-            "mode": "field",
-            "value": "knownAs",
+            "mode": "complex",
+            "value": "function getKnownAs() {\r\n    if (!source.knownAs || source.knownAs.trim() === \"\") {\r\n        return source.firstNames;\r\n    }\r\n\r\n    return source.knownAs;\r\n}\r\n\r\ngetKnownAs();",
             "validation": {
                 "required": true
             }
@@ -116,24 +108,24 @@
     "contractMappings": [
         {
             "name": "CostCenter.Code",
-            "mode": "field",
-            "value": "employment_costCenter.shortName",
+            "mode": "complex",
+            "value": "function getCostCenterCode() {\r\n    if (!sourceContract.employment_costCenter) {\r\n        return null;\r\n    }\r\n\r\n    return sourceContract.employment_costCenter.shortName;\r\n} \r\n\r\ngetCostCenterCode();",
             "validation": {
                 "required": false
             }
         },
         {
             "name": "CostCenter.ExternalId",
-            "mode": "field",
-            "value": "employment_costCenter.shortName",
+            "mode": "complex",
+            "value": "function getCostCenterCode() {\r\n    if (!sourceContract.employment_costCenter) {\r\n        return null;\r\n    }\r\n\r\n    return sourceContract.employment_costCenter.shortName;\r\n} \r\n\r\ngetCostCenterCode();",
             "validation": {
                 "required": false
             }
         },
         {
             "name": "CostCenter.Name",
-            "mode": "field",
-            "value": "employment_costCenter.fullName",
+            "mode": "complex",
+            "value": "function getCostCenterName() {\r\n    if (!sourceContract.employment_costCenter) {\r\n        return null;\r\n    }\r\n\r\n    return sourceContract.employment_costCenter.fullName;\r\n} \r\n\r\ngetCostCenterName();",
             "validation": {
                 "required": false
             }
@@ -172,40 +164,40 @@
         },
         {
             "name": "Division.Code",
-            "mode": "field",
-            "value": "employment_classification.shortName",
+            "mode": "complex",
+            "value": "function getClassificationCode() {\r\n    if (!sourceContract.employment_classification) {\r\n        return null;   \r\n    }\r\n        return sourceContract.employment_classification.shortName; \r\n} \r\n\r\ngetClassificationCode();",
             "validation": {
                 "required": false
             }
         },
         {
             "name": "Division.Name",
-            "mode": "field",
-            "value": "employment_classification.fullName",
+            "mode": "complex",
+            "value": "function getClassificationCode() {\r\n    if (!sourceContract.employment_classification) {\r\n        return null;\r\n    }\r\n\r\n    return sourceContract.employment_classification.fullName;\r\n} \r\n\r\ngetClassificationCode();",
             "validation": {
                 "required": false
             }
         },
         {
             "name": "Employer.Code",
-            "mode": "field",
-            "value": "employment_company.shortName",
+            "mode": "complex",
+            "value": "function getCompanyCode() {\r\n    if (!sourceContract.employment_company) {\r\n        return null;\r\n    }\r\n\r\n    return sourceContract.employment_company.shortName;\r\n} \r\n\r\ngetCompanyCode();",
             "validation": {
                 "required": false
             }
         },
         {
             "name": "Employer.ExternalId",
-            "mode": "field",
-            "value": "employment_company.id",
+            "mode": "complex",
+            "value": "function getCompanyId() {\r\n    if (!sourceContract.employment_company) {\r\n        return null;\r\n    }\r\n\r\n    return sourceContract.employment_company.id;\r\n} \r\n\r\ngetCompanyId();",
             "validation": {
                 "required": false
             }
         },
         {
             "name": "Employer.Name",
-            "mode": "field",
-            "value": "employment_company.fullName",
+            "mode": "complex",
+            "value": "function getCompanyName() {\r\n    if (!sourceContract.employment_company) {\r\n        return null;\r\n    }\r\n\r\n    return sourceContract.employment_company.fullName;\r\n} \r\n\r\ngetCompanyName();",
             "validation": {
                 "required": false
             }
@@ -236,24 +228,24 @@
         },
         {
             "name": "Title.Code",
-            "mode": "field",
-            "value": "employment_jobProfile.shortName",
+            "mode": "complex",
+            "value": "function getJobCode() {\r\n    if (!sourceContract.employment_jobProfile) {\r\n        return null;\r\n    }\r\n\r\n    return sourceContract.employment_jobProfile.shortName;\r\n} \r\n\r\ngetJobCode();",
             "validation": {
                 "required": false
             }
         },
         {
             "name": "Title.ExternalId",
-            "mode": "field",
-            "value": "employment_jobProfile.id",
+            "mode": "complex",
+            "value": "function getJobId() {\r\n    if (!sourceContract.employment_jobProfile) {\r\n        return null;\r\n    }\r\n\r\n    return sourceContract.employment_jobProfile.id;\r\n} \r\n\r\ngetJobId();",
             "validation": {
                 "required": false
             }
         },
         {
             "name": "Title.Name",
-            "mode": "field",
-            "value": "employment_jobProfile.fullName",
+            "mode": "complex",
+            "value": "function getJobName() {\r\n    if (!sourceContract.employment_jobProfile) {\r\n        return null;\r\n    }\r\n\r\n    return sourceContract.employment_jobProfile.fullName;\r\n} \r\n\r\ngetJobName();",
             "validation": {
                 "required": false
             }
